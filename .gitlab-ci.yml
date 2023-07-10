@@ -1,0 +1,65 @@
+image: docker:22.06-rc
+
+variables:
+  DOCKER_DRIVER: overlay
+  DOCKER_HOST: tcp://docker:2375/
+  DOCKER_TLS_CERTDIR: ""
+
+services:
+  - docker:dind
+
+.init_ssh: &init_ssh |
+  eval $(ssh-agent -s)
+  echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+  mkdir -p ~/.ssh
+  chmod 700 ~/.ssh
+  [[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+
+.change_file_permissions: &change_file_permissions |
+  find . -type f -not -path "./node_modules/*" -exec chmod 664 {} \;
+  find . -type d -not -path "./node_modules/*" -exec chmod 775 {} \;
+
+before_script:
+  - echo $DOCKER_REGISTRY_PASS | docker login -u $DOCKER_REGISTRY_USER --password-stdin
+  - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin registry.menobuzz.com
+  - docker info
+
+build:
+  stage: build
+  script:
+    # - cp .env.test .env
+    - docker-compose -f docker-compose.test.yml build
+  only:
+    - main
+    - stage
+
+test:
+  stage: test
+  dependencies:
+    - build
+  script:
+    - echo "run test"
+  only:
+    - main
+    - stage
+
+staging:
+  stage: deploy
+  script:
+    - *init_ssh
+    - ssh deployer@$SRV_CAR_STAGE "cd /home/app/scripts && ./deploy-landing.sh"
+  environment:
+    name: staging
+  only:
+    - stage
+
+production:
+  stage: deploy
+  script:
+    - *init_ssh
+    - ssh deployer@$SRV_CAR_PROD "cd /home/app/scripts && ./deploy-landing.sh"
+  environment:
+    name: production
+  when: manual
+  only:
+    - main

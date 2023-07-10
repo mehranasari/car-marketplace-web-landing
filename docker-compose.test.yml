@@ -1,0 +1,13 @@
+version: '3.7'
+services:
+    landing_app:
+        build:
+            context: .
+        volumes:
+            - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+            - ./node_modules:/usr/share/nginx/cache/node_modules
+        networks:
+            - core-network
+networks:
+    core-network:
+        driver: bridge
